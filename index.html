@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<title>ShooterTank</title>
+<style>
+  body { margin:0; background:#393939; color:white; text-align:center; font-family:sans-serif;}
+  canvas { background:#393939; display:block; margin:10px auto; }
+
+  #hud {
+  width: 800px;
+  margin: 10px auto 0;
+  display: flex;
+  justify-content: space-between;
+  font-size: 28px;
+  font-weight: bold;
+  }
+
+  #p1hud { color: red; }
+  #p2hud { color: lime; }
+
+  #centerhud {
+    flex: 1;
+    text-align: center;
+    color: yellow;
+  }
+
+  #gameOverScreen {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.85);
+    z-index: 1000;
+
+    justify-content: center;
+    align-items: center;
+    flex-direction: column;
+  }
+
+  #winnerLabel {
+    font-size: 50px;
+    font-weight: 900;
+    text-transform: uppercase;
+    margin: 0 0 40px 0;
+  }
+
+  #restartBtn {
+    font-size: 32px;
+    font-weight: bold;
+    padding: 18px 40px;
+    border: none;
+    border-radius: 15px;
+    cursor: pointer;
+
+    background: linear-gradient(#ffffff, #d0d0d0);
+    color: #222;
+
+    box-shadow:
+      0 6px 0 #888,
+      0 10px 25px rgba(0,0,0,0.5);
+
+    transition: all 0.15s ease;
+  }
+
+  #restartBtn:hover {
+    transform: scale(1.08);
+    background: linear-gradient(#ffffff, #eeeeee);
+  }
+
+  #restartBtn:active {
+    transform: translateY(4px);
+    box-shadow:
+      0 2px 0 #888,
+      0 4px 10px rgba(0,0,0,0.4);
+  }
+</style>
+</head>
+<body>
+
+<h3>Tank 2 Player Arena-Doolhof</h3>
+<p>WASD + SHIFT | Pijlen + ENTER</p>
+
+<div id="hud">
+  <div id="p1hud">P1 HP: 100</div>
+  <div id="centerhud"></div>
+  <div id="p2hud">P2 HP: 100</div>
+</div>
+
+<div id="gameOverScreen" style="display:none; text-align:center; margin-top:20px;">
+  <h2 id="winnerLabel" style="color:yellow;"></h2>
+  <button id="restartBtn">Restart Game</button>
+</div>
+
+<canvas id="c" width="1520" height="800"></canvas>
+
+<script>
+const c = document.getElementById("c");
+const ctx = c.getContext("2d");
+const p1hud = document.getElementById("p1hud");
+const p2hud = document.getElementById("p2hud");
+const centerhud = document.getElementById("centerhud");
+
+let hits = []; // elk item: {x, y, timer}
+let animationId;
+let running = true;
+
+const size = 40;
+const MAX_BOUNCES = 10;
+
+// MAZE
+const maze = [
+[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+[1,0,0,0,0,0,1,0,0,0,0,0,0,0,0,1,0,0,0,0,0,1,0,0,0,1,0,0,0,1,0,0,0,0,0,0,0,1],
+[1,0,1,1,1,0,1,0,1,1,1,1,0,1,0,1,0,1,0,1,0,0,0,1,0,0,0,1,0,0,0,1,1,1,1,1,0,1],
+[1,0,1,0,0,0,0,0,0,0,1,0,0,1,0,0,0,1,0,1,0,1,1,1,1,1,1,0,1,1,0,1,0,0,0,0,0,1],
+[1,0,1,0,1,1,1,1,1,0,1,0,1,1,1,1,0,1,0,1,0,1,0,0,0,0,1,0,0,1,0,1,1,1,1,1,0,1],
+[1,0,0,0,0,0,0,0,1,0,0,0,0,0,0,1,0,0,0,0,0,1,0,1,1,0,1,1,0,1,0,1,0,0,0,0,0,1],
+[1,1,1,1,1,1,0,1,1,1,1,1,0,1,1,1,1,1,0,1,0,0,0,0,0,0,1,0,0,0,0,1,0,1,0,1,0,1],
+[1,0,0,0,0,1,0,0,0,0,0,1,0,0,0,0,1,0,0,1,0,1,1,0,1,0,0,0,1,1,1,1,0,1,0,1,0,1],
+[1,0,1,1,0,1,1,1,1,1,0,1,1,1,1,0,1,0,1,1,0,0,0,0,1,1,1,0,0,0,0,0,0,1,0,1,0,1],
+[1,0,0,0,0,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1,0,1,1,0,1,0,0,0,1,1,0,1,0,1,0,0,0,1],
+[1,1,0,1,1,1,1,1,0,1,1,1,1,0,1,1,1,1,0,1,0,1,0,0,0,0,1,0,0,1,0,1,0,1,1,1,1,1],
+[1,0,0,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1,0,1,0,1,0,1,1,1,1,1,0,1,0,1,0,0,0,0,0,1],
+[1,0,1,1,1,1,0,1,1,1,1,0,1,1,1,1,0,1,0,0,0,1,0,1,0,0,0,1,0,0,0,1,1,1,1,1,0,1],
+[1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,1,0,0,0,1,0,1,0,0,0,0,0,1],
+[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+];
+
+// INPUT
+let keys = {};
+document.addEventListener("keydown", e => keys[e.key.toLowerCase()] = true);
+document.addEventListener("keyup", e => keys[e.key.toLowerCase()] = false);
+
+// WALL CHECK
+function isWall(px, py){
+  let x = Math.floor(px / size);
+  let y = Math.floor(py / size);
+  return maze[y] && maze[y][x] === 1;
+}
+
+// TANK
+function Tank(x, y, color, controls){
+  this.x = x;
+  this.y = y;
+  this.a = 0;
+  this.hp = 100;
+  this.color = color;
+  this.controls = controls;
+  this.bullets = [];
+  this.cd = 0;
+}
+
+// MOVE (met echte collision)
+Tank.prototype.move = function(){
+  if(keys[this.controls.left]) this.a -= 0.05;
+  if(keys[this.controls.right]) this.a += 0.05;
+
+  let vx = 0, vy = 0;
+
+  if(keys[this.controls.up]){
+    vx = Math.cos(this.a) * 2;
+    vy = Math.sin(this.a) * 2;
+  }
+  if(keys[this.controls.down]){
+    vx = -Math.cos(this.a) * 2;
+    vy = -Math.sin(this.a) * 2;
+  }
+
+  function canMove(x, y){
+    let s = 14;
+    return !(
+      isWall(x - s, y - s) ||
+      isWall(x + s, y - s) ||
+      isWall(x - s, y + s) ||
+      isWall(x + s, y + s)
+    );
+  }
+
+  if(canMove(this.x + vx, this.y)) this.x += vx;
+  if(canMove(this.x, this.y + vy)) this.y += vy;
+};
+
+// SHOOT
+Tank.prototype.shoot = function(){
+  if(this.cd <= 0){
+    this.bullets.push({
+      x: this.x,
+      y: this.y,
+      a: this.a,
+      s: 6,
+      bounces: 0,
+      dead: false
+    });
+    this.cd = 10;
+  }
+};
+
+// FIND SPAWN
+function findFreeSpot(){
+  while(true){
+    let x = Math.floor(Math.random()*20)*size + size/2;
+    let y = Math.floor(Math.random()*maze.length)*size + size/2;
+    if(!isWall(x,y)) return [x,y];
+  }
+}
+
+let [x1,y1] = findFreeSpot();
+let [x2,y2] = findFreeSpot();
+
+let p1 = new Tank(x1,y1,"Red",{up:"w",down:"s",left:"a",right:"d",shoot:"shift"});
+let p2 = new Tank(x2,y2,"Lime",{up:"arrowup",down:"arrowdown",left:"arrowleft",right:"arrowright",shoot:"enter"});
+
+// BULLETS
+function updateBullets(shooter, targets){
+
+  shooter.bullets.forEach(b => {
+
+    for(let i = 0; i < b.s; i++){
+
+      let nx = b.x + Math.cos(b.a);
+      let ny = b.y + Math.sin(b.a);
+
+      let hitX = isWall(nx, b.y);
+      let hitY = isWall(b.x, ny);
+
+      // muur geraakt
+      if(hitX || hitY){
+
+        if(hitX) b.a = Math.PI - b.a;
+        if(hitY) b.a = -b.a;
+
+        b.bounces++;
+
+        hits.push({
+          x: b.x,
+          y: b.y,
+          timer: 5
+        });
+
+        if(b.bounces >= MAX_BOUNCES){
+          b.dead = true;
+          break;
+        }
+
+        continue;
+      }
+
+      b.x = nx;
+      b.y = ny;
+
+      // tank geraakt
+      for(let target of targets){
+
+        if(Math.hypot(b.x - target.x, b.y - target.y) < 18){
+
+          target.hp -= 20;
+
+          hits.push({
+            x: b.x,
+            y: b.y,
+            timer: 12
+          });
+
+          b.dead = true;
+          break;
+        }
+      }
+
+      if(b.dead) break;
+    }
+
+  });
+
+  shooter.bullets = shooter.bullets.filter(b => !b.dead);
+}
+
+function drawTank(t){
+  ctx.save();
+  ctx.translate(t.x, t.y);
+  ctx.rotate(t.a);
+
+  ctx.fillStyle = t.color;
+  ctx.fillRect(-15, -15, 30, 30);
+
+  ctx.fillStyle = "black";
+  ctx.fillRect(0, -4, 20, 8);
+
+  ctx.restore();
+}
+
+function drawMaze(){
+  ctx.strokeStyle = "#000";
+  ctx.lineWidth = 3;
+
+  for(let y = 0; y < maze.length; y++){
+    for(let x = 0; x < maze[y].length; x++){
+
+      if(maze[y][x] === 1){
+        ctx.strokeRect(
+          x * size,
+          y * size,
+          size,
+          size
+        );
+      }
+
+    }
+  }
+}
+
+function drawHits() {
+  for (let i = hits.length - 1; i >= 0; i--) {
+    let h = hits[i];
+
+    if (!h.particles) {
+      h.particles = [];
+
+      for (let j = 0; j < 6; j++) {
+        let angle = Math.random() * Math.PI * 2;
+        let speed = Math.random() * 3 + 1;
+
+        h.particles.push({
+          x: h.x,
+          y: h.y,
+          vx: Math.cos(angle) * speed,
+          vy: Math.sin(angle) * speed,
+          alpha: 1
+        });
+      }
+    }
+
+    for (let p of h.particles) {
+      ctx.fillStyle = `rgba(255,200,0,${p.alpha})`;
+
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 3, 0, Math.PI * 2);
+      ctx.fill();
+
+      p.x += p.vx;
+      p.y += p.vy;
+      p.alpha -= 0.05;
+    }
+
+    h.timer--;
+
+    if (h.timer <= 0) {
+      hits.splice(i, 1);
+    }
+  }
+}
+
+const gameOverScreen = document.getElementById("gameOverScreen");
+const winnerLabel = document.getElementById("winnerLabel");
+const restartBtn = document.getElementById("restartBtn");
+
+// Herstart functie
+restartBtn.addEventListener("click", () => {
+  // Stop oude loop
+  running = false;
+  cancelAnimationFrame(animationId);
+
+  // Reset tanks
+  [p1.x, p1.y] = findFreeSpot();
+  [p2.x, p2.y] = findFreeSpot();
+  p1.hp = 100;
+  p2.hp = 100;
+  p1.bullets = [];
+  p2.bullets = [];
+  hits = [];
+  keys = {};
+
+  // Herstart loop
+  running = true;
+  gameOverScreen.style.display = "none";
+  loop();
+});
+
+// Game over functie
+function gameOver(winnerColor){
+  running = false;
+  cancelAnimationFrame(animationId);
+
+  winnerLabel.textContent = winnerColor.toUpperCase() + " WINS!";
+  winnerLabel.style.color = winnerColor === "green" ? "lime" : "red";
+
+  gameOverScreen.style.display = "flex";
+}
+
+// LOOP
+function loop(){
+
+  if(!running) return;
+
+  ctx.clearRect(0, 0, c.width, c.height);
+
+  drawMaze();
+
+  if(keys[p1.controls.shoot]) p1.shoot();
+  if(keys[p2.controls.shoot]) p2.shoot();
+
+  if(p1.cd > 0) p1.cd--;
+  if(p2.cd > 0) p2.cd--;
+
+  p1.move();
+  p2.move();
+
+  updateBullets(p1, [p2]);
+  updateBullets(p2, [p1]);
+
+  drawTank(p1);
+  drawTank(p2);
+
+  ctx.fillStyle = "yellow";
+  p1.bullets.forEach(b => ctx.fillRect(b.x - 2, b.y - 2, 4, 4));
+
+  ctx.fillStyle = "orange";
+  p2.bullets.forEach(b => ctx.fillRect(b.x - 2, b.y - 2, 4, 4));
+
+  drawHits();
+
+  p1hud.textContent = `Red HP: ${Math.max(0, p1.hp)}`;
+  p2hud.textContent = `Green HP: ${Math.max(0, p2.hp)}`;
+
+  if(p1.hp <= 0){
+    gameOver("green");
+    return;
+  }
+
+  if(p2.hp <= 0){
+    gameOver("red");
+    return;
+  }
+
+  centerhud.textContent = "";
+
+  animationId = requestAnimationFrame(loop);
+}
+
+loop();
+</script>
+
+</body>
+</html>
